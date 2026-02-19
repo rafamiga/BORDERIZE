@@ -9,7 +9,7 @@ NC='\033[0m' # No Color
 # Function to convert hex to RGB and then to ANSI
 hex_to_ansi() {
     local hex="$1"
-    
+
     # Remove # if present
     hex="${hex#\#}"
     
@@ -27,6 +27,27 @@ hex_to_ansi() {
     
     # Return ANSI escape code for 24-bit color
     echo -e "\033[38;2;${r};${g};${b}m"
+}
+
+# Function to normalize CSI color code
+csi_to_ansi() {
+    local csi="${1#-}"
+
+    # Validate hex format
+    if [[ ! "$csi" =~ ^[0-7]$ ]]; then
+        # If invalid CSI code, return default green
+        echo "$DEFAULT_GREEN"
+        return
+    fi
+
+    if [[ -z ${2} ]]; then
+       local background_or_foreground="4" # default is foreground (\e[3...)
+    else
+       local background_or_foreground="3"
+    fi
+
+    # Return ANSI escape code for plain old CSI color
+    echo -e "\033[${background_or_foreground}${csi}m"
 }
 
 # Function to calculate the visual width of a string (accounting for ANSI codes)
@@ -156,6 +177,7 @@ main() {
     local input_text=""
     local input_command=""
     local hex_count=0
+    local csi_count=0
     
     # Parse all arguments
     while [[ $# -gt 0 ]]; do
@@ -190,6 +212,16 @@ main() {
                             text_color=$(hex_to_ansi "$hex_code")
                         fi
                         shift
+                    elif [[ "$1" =~ ^-[0-7] ]]; then
+                        # This is a hex color, process it
+                        local csi_code="${1#-}"
+                        csi_count=$((csi_count + 1))
+                        if [ $csi_count -eq 1 ]; then
+                            border_color=$(csi_to_ansi "$1" border)
+                        elif [ $csi_count -eq 2 ]; then
+                            text_color=$(csi_to_ansi "$1")
+                        fi
+                        shift
                     else
                         # Part of the command
                         if [ -z "$input_command" ]; then
@@ -202,7 +234,18 @@ main() {
                 done
                 break
                 ;;
-            -[0-9A-Fa-f]*)
+            -[0-7])
+                # This is a hex color, process it
+                local csi_code="${1#-}"
+                csi_count=$((csi_count + 1))
+                if [ $csi_count -eq 1 ]; then
+                  border_color=$(csi_to_ansi "$1" border)
+               elif [ $csi_count -eq 2 ]; then
+                  text_color=$(csi_to_ansi "$1")
+               fi
+                shift
+                ;;
+            -[0-9A-Fa-f]+)
                 # Hex color code
                 local hex_code="${1#-}"
                 hex_count=$((hex_count + 1))
